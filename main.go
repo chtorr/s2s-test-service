@@ -54,7 +54,8 @@ func main() {
 
 	http.HandleFunc("/ping", ping)
 
-	err := http.ListenAndServe(strconv.Itoa(listenPort), nil)
+	port := fmt.Sprintf(":%d", listenPort)
+	err := http.ListenAndServe(port, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
