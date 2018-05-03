@@ -25,7 +25,7 @@ const (
 func main() {
 
 	// mandatory service name
-	service_name = os.Getenv(configKeyServicePort)
+	service_name = os.Getenv(configKeyServiceName)
 	if service_name == "" {
 		log.Fatalf("%s env var must be set", configKeyServiceName)
 	}
