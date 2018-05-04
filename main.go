@@ -1,64 +1,83 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+
+	_ "github.com/lib/pq"
 )
 
-var service_name string
+var serviceName string
 
 var (
-	listenPort     = 8080
-	egressHTTPPort = 9000
+	listenPort         = "8080"
+	egressHTTPPort     = "9000"
+	egressPostgresPort = "9100"
 )
 
 const (
-	configKeyServiceName = "SERVICE_NAME"
-	configKeyServicePort = "SERVICE_PORT"
-	configKeyEgressPort  = "EGRESS_HTTP_PORT"
+	configKeyServiceName        = "SERVICE_NAME"
+	configKeyServicePort        = "SERVICE_PORT"
+	configKeyEgressHTTPPort     = "EGRESS_HTTP_PORT"
+	configKeyEgressPostgresPort = "EGRESS_POSTGRES_PORT"
 )
 
 func main() {
 
 	// mandatory service name
-	service_name = os.Getenv(configKeyServiceName)
-	if service_name == "" {
+	serviceName = os.Getenv(configKeyServiceName)
+	if serviceName == "" {
 		log.Fatalf("%s env var must be set", configKeyServiceName)
 	}
 
 	// override listen port for this service
-	service_port := os.Getenv(configKeyServicePort)
-	if service_port != "" {
-		port, err := strconv.Atoi(service_port)
-		if err != nil {
-			log.Fatalf("failed converting %s to int: %v", configKeyServicePort, err)
-		}
+	port := os.Getenv(configKeyServicePort)
+	if port != "" {
 		listenPort = port
 	}
 
-	// override egress port
-	egress_port := os.Getenv(configKeyEgressPort)
-	if egress_port != "" {
-		port, err := strconv.Atoi(egress_port)
-		if err != nil {
-			log.Fatalf("failed converting %s to int: %v", configKeyEgressPort, err)
-		}
-		listenPort = port
+	// override egress http port
+	port = os.Getenv(configKeyEgressHTTPPort)
+	if port != "" {
+		egressHTTPPort = port
 	}
 
-	log.Printf("Starting server for %s...", service_name)
+	// override egress postgres port
+	port = os.Getenv(configKeyEgressPostgresPort)
+	if port != "" {
+		egressPostgresPort = port
+	}
+
+	conninfo := fmt.Sprintf("postgres://postgres:postgres@127.0.0.1:%s/postgres?sslmode=disable", egressPostgresPort)
+	fmt.Println(conninfo)
+	db, err := sql.Open("postgres", conninfo)
+	if err != nil {
+		log.Fatalf("Failed opening db: %v", err)
+	}
+
+	log.Printf("Starting server for %s...", serviceName)
 
 	http.HandleFunc("/ping", ping)
+	http.Handle("/pingdb", pingdb(db))
 
-	port := fmt.Sprintf(":%d", listenPort)
-	err := http.ListenAndServe(port, nil)
+	serverPort := fmt.Sprintf(":%s", listenPort)
+	err = http.ListenAndServe(serverPort, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
+}
+
+func pingdb(db *sql.DB) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := db.Ping()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+		}
+	})
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +92,7 @@ func ping(w http.ResponseWriter, r *http.Request) {
 }
 
 func returnLocal(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handing /ping for %s", service_name)
+	log.Printf("handing /ping for %s", serviceName)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "pong")
 }
@@ -81,7 +100,7 @@ func returnLocal(w http.ResponseWriter, r *http.Request) {
 // send an HTTP request to the egress port with the host header set to the specified value
 func returnRemote(w http.ResponseWriter, r *http.Request) {
 	service := r.URL.Query().Get("service")
-	log.Printf("%s passing request to %s", service_name, service)
+	log.Printf("%s passing request to %s", serviceName, service)
 
 	client := &http.Client{}
 	u := fmt.Sprintf("http://127.0.0.1:%d/ping", egressHTTPPort)
@@ -90,7 +109,7 @@ func returnRemote(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		msg := fmt.Sprintf("%s error pinging %s: %v", service_name, service, err)
+		msg := fmt.Sprintf("%s error pinging %s: %v", serviceName, service, err)
 		log.Println(msg)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, msg)
@@ -100,7 +119,7 @@ func returnRemote(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		msg := fmt.Sprintf("%s error pinging %s: %v", service_name, service, err)
+		msg := fmt.Sprintf("%s error pinging %s: %v", serviceName, service, err)
 		log.Println(msg)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, msg)
