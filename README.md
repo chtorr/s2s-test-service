@@ -17,4 +17,7 @@ curl 127.0.0.1:21352/ping
 
 # have this service try to ping another using the provided string
 curl 127.0.0.1:21352/ping?service=service2
+
+# have this service try to call a specific endpoint another services
+curl 127.0.0.1:21352/ping?service=service2&path=ping
 ```

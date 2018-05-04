@@ -100,10 +100,14 @@ func returnLocal(w http.ResponseWriter, r *http.Request) {
 // send an HTTP request to the egress port with the host header set to the specified value
 func returnRemote(w http.ResponseWriter, r *http.Request) {
 	service := r.URL.Query().Get("service")
-	log.Printf("%s passing request to %s", serviceName, service)
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		path = "/ping"
+	}
+	log.Printf("%s passing request to %s/%s", serviceName, service, path)
 
 	client := &http.Client{}
-	u := fmt.Sprintf("http://127.0.0.1:%d/ping", egressHTTPPort)
+	u := fmt.Sprintf("http://127.0.0.1:%s/%s", egressHTTPPort, path)
 	req, err := http.NewRequest("GET", u, nil)
 	req.Host = service
 
