@@ -76,7 +76,9 @@ func pingdb(db *sql.DB) http.Handler {
 		_, err := db.Exec("SELECT 1")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
+			return
 		}
+
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "pong")
 	})
