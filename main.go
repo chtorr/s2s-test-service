@@ -73,7 +73,7 @@ func main() {
 
 func pingdb(db *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := db.Ping()
+		_, err := db.Exec("SELECT 1")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("%v", err), http.StatusInternalServerError)
 		}
