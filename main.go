@@ -106,7 +106,7 @@ func returnRemote(w http.ResponseWriter, r *http.Request) {
 	service := r.URL.Query().Get("service")
 	path := r.URL.Query().Get("path")
 	if path == "" {
-		path = "/ping"
+		path = "ping"
 	}
 	log.Printf("%s passing request to %s/%s", serviceName, service, path)
 
@@ -135,6 +135,6 @@ func returnRemote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(resp.StatusCode)
-	w.Write(body)
+	fmt.Fprintf(w, "response from %s: (%s)", service, string(body))
 	return
 }
