@@ -61,8 +61,11 @@ func main() {
 
 	log.Printf("Starting server for %s...", serviceName)
 
-	http.HandleFunc("/ping", ping)
-	http.Handle("/pingdb", pingdb(db))
+	http.Handle("/ping", ping())
+	http.Handle("/pingdb", pingDb(db))
+
+	http.Handle("/ping_remote", pingRemote())
+	http.Handle("/pingdb_remote", pingDbRemote())
 
 	serverPort := fmt.Sprintf(":%s", listenPort)
 	err = http.ListenAndServe(serverPort, nil)
@@ -71,7 +74,7 @@ func main() {
 	}
 }
 
-func pingdb(db *sql.DB) http.Handler {
+func pingDb(db *sql.DB) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := db.Exec("SELECT 1")
 		if err != nil {
@@ -84,31 +87,42 @@ func pingdb(db *sql.DB) http.Handler {
 	})
 }
 
-func ping(w http.ResponseWriter, r *http.Request) {
-	service := r.URL.Query().Get("service")
-	if service != "" {
-		returnRemote(w, r)
-		return
-	}
-
-	returnLocal(w, r)
-	return
+func ping() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("handing /ping for %s", serviceName)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "pong")
+	})
 }
 
-func returnLocal(w http.ResponseWriter, r *http.Request) {
-	log.Printf("handing /ping for %s", serviceName)
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "pong")
+func pingRemote() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		service := r.URL.Query().Get("service")
+		path := "ping"
+
+		log.Printf("%s passing request to %s/%s", serviceName, service, path)
+
+		code, body := callRemote(service, path)
+		w.WriteHeader(code)
+		fmt.Fprintf(w, body)
+	})
+}
+
+func pingDbRemote() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		service := r.URL.Query().Get("service")
+		path := "pingdb"
+
+		log.Printf("%s passing request to %s/%s", serviceName, service, path)
+
+		code, body := callRemote(service, path)
+		w.WriteHeader(code)
+		fmt.Fprintf(w, body)
+	})
 }
 
 // send an HTTP request to the egress port with the host header set to the specified value
-func returnRemote(w http.ResponseWriter, r *http.Request) {
-	service := r.URL.Query().Get("service")
-	path := r.URL.Query().Get("path")
-	if path == "" {
-		path = "ping"
-	}
-	log.Printf("%s passing request to %s/%s", serviceName, service, path)
+func callRemote(service, path string) (int, string) {
 
 	client := &http.Client{}
 	u := fmt.Sprintf("http://127.0.0.1:%s/%s", egressHTTPPort, path)
@@ -117,24 +131,14 @@ func returnRemote(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		msg := fmt.Sprintf("%s error pinging %s: %v", serviceName, service, err)
-		log.Println(msg)
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, msg)
-		return
+		return http.StatusInternalServerError, fmt.Sprintf("%s error calling %s/%s: %v", serviceName, service, path, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		msg := fmt.Sprintf("%s error pinging %s: %v", serviceName, service, err)
-		log.Println(msg)
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, msg)
-		return
+		return http.StatusInternalServerError, fmt.Sprintf("%s error calling %s/%s: %v", serviceName, service, path, err)
 	}
 
-	w.WriteHeader(resp.StatusCode)
-	fmt.Fprintf(w, "response from %s: (%s)", service, string(body))
-	return
+	return resp.StatusCode, fmt.Sprintf("response from %s: (%s)", service, string(body))
 }
